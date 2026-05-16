@@ -5586,6 +5586,75 @@
     };
 
     const App = {
+      sentenceApiCache: {},
+      sentenceApiRequests: {},
+      descriptiveSentenceTemplates: {
+        accidentally: 'I accidentally knocked over the cup when I reached for my pencil.',
+        anchor: 'The sailors dropped the anchor to stop the boat drifting away.',
+        antique: 'The antique clock ticked softly on the shelf in the old house.',
+        arrive: 'We could not wait to arrive at the museum and see the dinosaur bones.',
+        ascend: 'We began to ascend the steep hill and soon saw the view from the top.',
+        ball: 'The red ball bounced across the playground after the kick.',
+        bawl: 'The toddler began to bawl when his toy rolled under the sofa.',
+        berry: 'A bright red berry hung from the bush in the garden.',
+        brake: 'Dad pressed the brake as the traffic lights turned red.',
+        break: 'Be careful not to break the shell when you crack the egg.',
+        breathe: 'Take a deep breath and breathe slowly before you start the race.',
+        burial: 'The archaeologists studied the ancient burial site with great care.',
+        bury: 'The dog tried to bury its bone beneath the apple tree.',
+        butcher: 'The butcher wrapped the meat in paper and handed it to the customer.',
+        century: 'People living a century ago travelled very differently from us.',
+        chaos: 'When glitter spilled over the table, the art room fell into chaos.',
+        character: 'My favourite character in the story was brave, clever, and kind.',
+        chemist: 'The chemist measured the colourful liquid before starting the experiment.',
+        chorus: 'Everyone joined in the chorus when the song reached its loudest part.',
+        collision: 'The two toy cars had a collision at the bottom of the ramp.',
+        composure: 'She took a deep breath and kept her composure before speaking.',
+        confusion: 'There was confusion in the hall when two classes arrived at once.',
+        crescent: 'The moon looked like a silver crescent in the dark sky.',
+        dialogue: 'The dialogue in the play sounded natural and easy to follow.',
+        echo: 'We shouted into the deep canyon and listened to the echo of our voices.',
+        erosion: 'Years of erosion had worn the cliff into strange shapes.',
+        fair: 'The judges tried to make a fair decision for every team.',
+        fare: 'The bus fare was printed on the sign beside the driver.',
+        fatigue: 'After the long hike, fatigue made our legs feel heavy.',
+        fruit: 'We packed fresh fruit for our picnic in the park.',
+        fusion: 'The chef created a tasty fusion of spicy and sweet flavours.',
+        gardener: 'The gardener watered the flowers before the sun grew too hot.',
+        guard: 'A guard stood by the gate and watched who came in.',
+        humbly: 'He accepted the prize humbly and thanked everyone who had helped him.',
+        league: 'Our team moved to the top of the league after winning again.',
+        length: 'Use a ruler to measure the length of the desk.',
+        mail: 'The morning mail arrived just as we were sitting down for breakfast.',
+        male: 'The male peacock spread its bright tail feathers.',
+        meat: 'The butcher stored the meat in the cold fridge.',
+        monarch: 'The young monarch waved to the crowd from the palace balcony.',
+        mosque: 'Families gathered at the mosque for evening prayers.',
+        plague: 'Rats once helped spread the plague through crowded towns.',
+        plaque: 'A brass plaque on the wall told the story of the old building.',
+        pleasure: 'It was a pleasure to hear the children sing so well.',
+        position: 'Please stand in the correct position before the race begins.',
+        purpose: 'The purpose of the bridge was to help people cross the river safely.',
+        quarter: 'A quarter of the pizza was left on the tray.',
+        question: 'The teacher asked a question and every hand shot into the air.',
+        reaction: 'Her reaction to the surprise present was a huge smile.',
+        rebound: 'The basketball hit the board and bounced back on the rebound.',
+        scheme: 'We made a cheerful colour scheme for the classroom display.',
+        school: 'The school playground was full of laughter at break time.',
+        science: 'In science, we tested which materials would float.',
+        scissors: 'Use the scissors carefully to cut along the dotted line.',
+        settle: 'The muddy water was left to settle before we poured it away.',
+        stomach: 'My stomach rumbled when the fresh bread came out of the oven.',
+        struggle: 'The seedling will struggle to grow without enough sunlight.',
+        survival: 'Warm clothes and clean water are important for survival in the wild.',
+        teacher: 'The teacher smiled as the class shared their ideas.',
+        television: 'We watched the nature programme on television after dinner.',
+        theme: 'Our classroom theme this term is oceans and sea life.',
+        unique: 'Each snowflake has a unique pattern.',
+        vision: 'My vision went blurry when I forgot my glasses.',
+        wrinkly: 'The old apple looked wrinkly after several days in the fruit bowl.'
+      },
+
       init() {
         Persistence.load();
         UI.renderBackground();
@@ -6060,11 +6129,203 @@
         this.scheduleRepeat();
       },
 
-      speakCurrentSentence() {
+      normalizeSentence(text) {
+        const trimmed = String(text || '').trim().replace(/\s+/g, ' ');
+        if (!trimmed) return '';
+        const cleaned = trimmed.replace(/^["'“”‘’]+|["'“”‘’]+$/g, '');
+        if (!cleaned) return '';
+        const sentence = /[.?!]$/.test(cleaned) ? cleaned : `${cleaned}.`;
+        return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+      },
+
+      async fetchDictionaryEntries(word) {
+        const lowerWord = String(word || '').trim().toLowerCase();
+        if (!lowerWord) return [];
+        if (this.sentenceApiCache[lowerWord]) return this.sentenceApiCache[lowerWord];
+        if (this.sentenceApiRequests[lowerWord]) return this.sentenceApiRequests[lowerWord];
+
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        const timeoutId = window.setTimeout(() => {
+          if (controller) controller.abort();
+        }, 1200);
+
+        const request = fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(lowerWord)}`, controller ? { signal: controller.signal } : undefined)
+          .then(async (response) => {
+            if (!response.ok) return [];
+            const data = await response.json();
+            return Array.isArray(data) ? data : [];
+          })
+          .catch(() => [])
+          .then((entries) => {
+            this.sentenceApiCache[lowerWord] = entries;
+            return entries;
+          })
+          .finally(() => {
+            window.clearTimeout(timeoutId);
+            delete this.sentenceApiRequests[lowerWord];
+          });
+
+        this.sentenceApiRequests[lowerWord] = request;
+        return request;
+      },
+
+      scoreDictionarySentence(word, sentence) {
+        const normalized = this.normalizeSentence(sentence);
+        if (!normalized) return Number.NEGATIVE_INFINITY;
+
+        const lowerWord = String(word || '').trim().toLowerCase().replace(/[^a-z]/g, '');
+        const lowerSentence = normalized.toLowerCase();
+        let score = 0;
+
+        if (lowerWord) {
+          const wordPattern = new RegExp(`\\b${lowerWord}[a-z]*\\b`, 'i');
+          if (wordPattern.test(lowerSentence)) score += 3;
+        }
+
+        if (normalized.length >= 35 && normalized.length <= 110) score += 2;
+        if (!/[;:()[\]{}]/.test(normalized)) score += 1;
+        if ((normalized.match(/,/g) || []).length <= 1) score += 1;
+        if (!/\b(court|violence|violent|verdict|satan|aggressive|linkage|locus|estate|processor|boomed|organisation|organization)\b/i.test(normalized)) score += 2;
+        if (!/\b(Mr|Mrs|Ms|Dr)\./.test(normalized)) score += 1;
+
+        return score;
+      },
+
+      pickDictionarySentence(word, entries) {
+        const candidates = [];
+
+        entries.forEach((entry) => {
+          (entry.meanings || []).forEach((meaning) => {
+            (meaning.definitions || []).forEach((definition) => {
+              if (!definition.example) return;
+              const sentence = this.normalizeSentence(definition.example);
+              if (!sentence) return;
+              candidates.push({
+                score: this.scoreDictionarySentence(word, sentence),
+                sentence
+              });
+            });
+          });
+        });
+
+        candidates.sort((a, b) => b.score - a.score);
+        return candidates[0]?.score >= 6 ? candidates[0].sentence : '';
+      },
+
+      pickDictionaryClue(entries) {
+        for (const entry of entries) {
+          for (const meaning of entry.meanings || []) {
+            for (const definition of meaning.definitions || []) {
+              if (definition.definition) {
+                return {
+                  definition: definition.definition,
+                  partOfSpeech: meaning.partOfSpeech || ''
+                };
+              }
+            }
+          }
+        }
+        return { definition: '', partOfSpeech: '' };
+      },
+
+      buildFallbackSentence(word, meta = {}, clue = {}) {
+        const cleanWord = String(word || '').trim();
+        if (!cleanWord) return '';
+
+        const lowerWord = cleanWord.toLowerCase();
+        const directTemplate = this.descriptiveSentenceTemplates[lowerWord];
+        if (directTemplate) return directTemplate;
+
+        const definition = (meta.def || clue.definition || '').trim().replace(/[.?!]+$/, '');
+        const definitionLower = definition.toLowerCase();
+        const partOfSpeech = (clue.partOfSpeech || '').toLowerCase();
+        const hasSuffix = (suffixes) => suffixes.some((suffix) => lowerWord.endsWith(suffix));
+
+        if (/(sound|voice|noise|music|song|repeat)/.test(definitionLower)) {
+          return `We called across the valley and heard the ${lowerWord} come back to us.`;
+        }
+
+        if (/(confusion|disorder|mess|upheaval)/.test(definitionLower)) {
+          return `Books and bags were everywhere, and the room was in ${lowerWord}.`;
+        }
+
+        if (/(ship|boat|sea|harbour|harbor)/.test(definitionLower)) {
+          return `The ${lowerWord} kept the boat from drifting away from the shore.`;
+        }
+
+        if (/(king|queen|ruler|royal)/.test(definitionLower)) {
+          return `The ${lowerWord} waved to the crowd from the palace steps.`;
+        }
+
+        if (/(conversation|dialogue|speech|talk)/.test(definitionLower)) {
+          return `Their ${lowerWord} continued quietly as they walked across the playground.`;
+        }
+
+        if (/(place of worship|religious building|mosque|church|temple)/.test(definitionLower)) {
+          return `Families walked quietly into the ${lowerWord} for prayer.`;
+        }
+
+        if (/(measure|distance|length|long)/.test(definitionLower)) {
+          return `We used a ruler to check the ${lowerWord} of the table.`;
+        }
+
+        if (/(question|problem to be answered)/.test(definitionLower)) {
+          return `The teacher asked a ${lowerWord}, and every hand went up.`;
+        }
+
+        if (/(body|organ|stomach|belly)/.test(definitionLower)) {
+          return `My ${lowerWord} growled when lunch smelled delicious.`;
+        }
+
+        if (/(mark|sign|memorial|plate)/.test(definitionLower)) {
+          return `A shiny ${lowerWord} on the wall told us something important.`;
+        }
+
+        if (/(person who|someone who|worker|teacher|guard|chemist|gardener|preacher|watcher|catcher)/.test(definitionLower)) {
+          return `The ${lowerWord} worked carefully and helped everyone nearby.`;
+        }
+
+        if (hasSuffix(['ly', 'ward', 'wise'])) {
+          return `She spoke ${lowerWord} as she told the class her story.`;
+        }
+
+        if (hasSuffix(['able', 'ible', 'al', 'ary', 'ful', 'ic', 'ical', 'ish', 'ive', 'less', 'ory', 'ous'])) {
+          return `It was a ${lowerWord} moment that everyone in class remembered.`;
+        }
+
+        if (partOfSpeech === 'verb' || hasSuffix(['ate', 'en', 'fy', 'ise', 'ize'])) {
+          return `Please ${lowerWord} your work before handing it in.`;
+        }
+
+        if (partOfSpeech === 'noun' || hasSuffix(['age', 'ance', 'ence', 'dom', 'er', 'or', 'hood', 'ism', 'ist', 'ity', 'ment', 'ness', 'ship', 'sion', 'tion', 'ture', 'ure'])) {
+          return `The ${lowerWord} became an important part of our story today.`;
+        }
+
+        if (definition) {
+          return `We learned that ${lowerWord} means ${definition.charAt(0).toLowerCase() + definition.slice(1)}.`;
+        }
+
+        return `The word ${lowerWord} fitted perfectly into our story today.`;
+      },
+
+      async getCurrentSentence(word) {
+        const meta = WordListManager.getWordMeta(word);
+        const lowerWord = String(word || '').trim().toLowerCase();
+        const directSentence = meta.sentence || CONFIG.SENTENCE_OVERRIDES[lowerWord] || this.descriptiveSentenceTemplates[lowerWord];
+        if (directSentence) return directSentence;
+
+        const entries = await this.fetchDictionaryEntries(lowerWord);
+        const dictionarySentence = this.pickDictionarySentence(lowerWord, entries);
+        if (dictionarySentence) return dictionarySentence;
+
+        return this.buildFallbackSentence(lowerWord, meta, this.pickDictionaryClue(entries));
+      },
+
+      async speakCurrentSentence() {
         const word = this.currentSpokenWord();
         if (!word || !state.speechSupported) return;
-        const meta = WordListManager.getWordMeta(word);
-        let sentence = meta.sentence || CONFIG.SENTENCE_OVERRIDES[word] || `I can spell ${word} carefully.`;
+        let sentence = await this.getCurrentSentence(word);
+        if (this.currentSpokenWord() !== word) return;
         if (state.currentScreen === 'test-screen' && sentence.startsWith(`Here is a sentence with ${word}: `)) {
           sentence = sentence.replace(`Here is a sentence with ${word}: `, '');
         }
