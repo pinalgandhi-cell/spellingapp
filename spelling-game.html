@@ -6060,11 +6060,47 @@
         this.scheduleRepeat();
       },
 
+      buildFallbackSentence(word, meta = {}) {
+        const cleanWord = String(word || '').trim();
+        if (!cleanWord) return '';
+
+        const lowerWord = cleanWord.toLowerCase();
+        const displayWord = lowerWord.charAt(0).toUpperCase() + lowerWord.slice(1);
+        const definition = (meta.def || '').trim().replace(/[.?!]+$/, '');
+        const hasSuffix = (suffixes) => suffixes.some((suffix) => lowerWord.endsWith(suffix));
+
+        if (hasSuffix(['ly', 'ward', 'wise'])) {
+          return `She spoke ${lowerWord} so everyone could hear her clearly.`;
+        }
+
+        if (hasSuffix(['able', 'ible', 'al', 'ary', 'ful', 'ic', 'ical', 'ish', 'ive', 'less', 'ory', 'ous'])) {
+          return `It was a ${lowerWord} idea for our class project.`;
+        }
+
+        if (hasSuffix(['ate', 'en', 'fy', 'ise', 'ize'])) {
+          return `Please ${lowerWord} your work before handing it in.`;
+        }
+
+        if (hasSuffix(['age', 'ance', 'ence', 'dom', 'er', 'or', 'hood', 'ism', 'ist', 'ity', 'ment', 'ness', 'ship', 'sion', 'tion', 'ture', 'ure'])) {
+          return `We talked about ${lowerWord} in our lesson today.`;
+        }
+
+        if (definition) {
+          return `${displayWord} means ${definition.charAt(0).toLowerCase() + definition.slice(1)}.`;
+        }
+
+        return `We used the word ${lowerWord} in our lesson today.`;
+      },
+
+      getCurrentSentence(word) {
+        const meta = WordListManager.getWordMeta(word);
+        return meta.sentence || CONFIG.SENTENCE_OVERRIDES[word] || this.buildFallbackSentence(word, meta);
+      },
+
       speakCurrentSentence() {
         const word = this.currentSpokenWord();
         if (!word || !state.speechSupported) return;
-        const meta = WordListManager.getWordMeta(word);
-        let sentence = meta.sentence || CONFIG.SENTENCE_OVERRIDES[word] || `I can spell ${word} carefully.`;
+        let sentence = this.getCurrentSentence(word);
         if (state.currentScreen === 'test-screen' && sentence.startsWith(`Here is a sentence with ${word}: `)) {
           sentence = sentence.replace(`Here is a sentence with ${word}: `, '');
         }
